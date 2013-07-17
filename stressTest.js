@@ -1,5 +1,6 @@
 var stressTest = (function () {
     var baselineName = '__STRESSTESTBASELINE__',
+    isTesting = false, /* (bool): whether the test is currently running */
     whitespace = /\s+/,
     Object_keys = Object.keys || function (obj) {
         var ret = [];
@@ -239,6 +240,9 @@ var stressTest = (function () {
           elms: indexElements(state.all), results: {}, finish: null
         }, state);
 
+		stressTest.isTesting = true;
+		setTimeout(stressTest.report.resize, 100);
+		
         //the first test scrolls down
         window.scrollTo(0, 0);
 
@@ -275,12 +279,13 @@ var stressTest = (function () {
       return parts[0] + (parts[1].length > 0 ? ('.' + parts[1]) : '');
     }
 
-    function showReport(state, report){
-        var log = '<table><thead><tr><th>Selector</th><th># Elms.</th><th># Child.</th><th> </th><th>Delta</th><th>Total</th></tr></thead>',
+    function showReport(state, report, resultsToShow){
+		var defaultResultsToShow = 20;
+        var log = '<table style="padding-right: 20px;"><thead><tr><th>Selector</th><th># Elms.</th><th># Child.</th><th> </th><th>Delta</th><th>Total</th></tr></thead>',
             all = Object_keys(state.results),
             worst = all.sort(function (a, b) {
                 return state.results[a].time - state.results[b].time;
-            }).slice(0, 20);
+            }).slice(0, (resultsToShow || defaultResultsToShow));
 
         forEach.call(worst, function (ii) {
             log += '<tr><td>Removing <strong style="font:12px monospace">' + ii +
@@ -317,19 +322,32 @@ var stressTest = (function () {
     stressTest.unbind = unbind;
     stressTest.bookmarklet = function () {
         if(stressTest.report) stressTest.report.close();
-
+		
         //var num = prompt('How many tests would you like to run (# stress tests per selector)?', 5);
         //if (num > 0) {
             var  reportHolder = document.createElement('iframe'),
             block = document.createElement('iframe');
+			
+			var maxHeight = 500,
+			maxNumResultsToShow = 60;
+	
             extend({
               //name: 'report' + Math.random().toString().substr(2),
               scrolling: 'no',
               frameBorder: 'no'
             }, reportHolder, true);
             document.body.appendChild(reportHolder);
+			
+			style(reportHolder,{
+			  'max-height' : maxHeight,
+			  'overflow-y' : 'auto',
+			  '-moz-box-sizing' : 'content-box',
+			  '-webkit-box-sizing' : 'content-box',
+			  'box-sizing' : 'content-box'
+			});
+			
             reportHolder.doc = reportHolder.contentDocument || reportHolder.contentWindow.document;
-            reportHolder.doc.write('<html><head></head><body></body></html>');
+            reportHolder.doc.write('<html><head><style>*{-moz-box-sizing: content-box;-webkit-box-sizing: content-box;box-sizing: content-box;}</style></head><body></body></html>');
             reportHolder.doc.close();
 
             var report = reportHolder.doc.createElement('div'),
@@ -337,8 +355,9 @@ var stressTest = (function () {
               state = {
                 //times: num,
                 finish: function(){
+				  stressTest.isTesting = false;
                   if(this.cancel) reportHolder.close();
-                  else showReport(this, report);
+                  else showReport(this, report, maxNumResultsToShow);
                 },
                 beforeTest: function(e) {
                   var l = this.queue.length;
@@ -347,6 +366,10 @@ var stressTest = (function () {
                 },
                 all: getChildren(document)
               };
+			  
+			  style(report,{
+			    'padding-right' : '20px'
+			  });
 
             reportHolder.resize = function(){
               var body = reportHolder.doc.body;
@@ -354,8 +377,11 @@ var stressTest = (function () {
                 width: body.scrollWidth,
                 height: body.scrollHeight
               });
-            }
-            setInterval(reportHolder.resize, 100);
+			  
+			  if (stressTest.isTesting) {
+			    setTimeout(reportHolder.resize, 100);
+			  }
+            };
 
             var zIndex = 0;
             forEach.call(state.all, function(elm){
